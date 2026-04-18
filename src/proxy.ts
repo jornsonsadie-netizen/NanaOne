@@ -53,7 +53,8 @@ async function updateCache() {
 
 // In Next.js 16, the middleware function is exported as 'proxy'
 export async function proxy(req: NextRequest) {
-  const ip = req.ip || req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  const ip = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
   const url = req.nextUrl.pathname;
   const userAgent = req.headers.get('user-agent')?.toLowerCase() || '';
 
