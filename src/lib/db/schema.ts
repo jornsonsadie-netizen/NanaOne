@@ -120,3 +120,9 @@ export const curationLogs = pgTable('curation_logs', {
   modelUsed: text('model_used'),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const ipBans = pgTable('ip_bans', {
+  ip: text('ip').primaryKey(),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});

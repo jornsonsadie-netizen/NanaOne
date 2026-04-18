@@ -16,6 +16,7 @@ export default function AdminPage() {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [userFilter, setUserFilter] = useState<'all' | 'flagged' | 'banned'>('all');
+  const [bannedIPs, setBannedIPs] = useState<any[]>([]);
 
   useEffect(() => {
     const access = localStorage.getItem('admin_access');
@@ -35,7 +36,8 @@ export default function AdminPage() {
 
     fetchLogs();
     fetchUsers();
-    const interval = setInterval(() => { fetchLogs(); fetchUsers(); }, 5000);
+    fetchBannedIPs();
+    const interval = setInterval(() => { fetchLogs(); fetchUsers(); fetchBannedIPs(); }, 5000);
     return () => clearInterval(interval);
   }, [router]);
 
@@ -58,6 +60,24 @@ export default function AdminPage() {
     } catch (e) {
       console.error('Users fetch failed');
     }
+  };
+
+  const fetchBannedIPs = async () => {
+    try {
+      const res = await fetch('/api/admin/ip-bans');
+      if (res.ok) setBannedIPs(await res.json());
+    } catch (e) {
+      console.error('IP bans fetch failed');
+    }
+  };
+
+  const handleUnbanIP = async (ip: string) => {
+    await fetch('/api/admin/ip-bans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip, action: 'unban' }),
+    });
+    await fetchBannedIPs();
   };
 
   const handleUserAction = async (userId: string, action: 'ban' | 'unban', reason?: string) => {
@@ -343,6 +363,42 @@ export default function AdminPage() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>No users in this category.</p>
           )}
         </div>
+      </div>
+
+      <div className="glass-card" style={{ marginTop: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+          <ShieldOff className="title-gradient" />
+          <h2 className="title-gradient">Security & IP Banning</h2>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+          {bannedIPs.length > 0 ? bannedIPs.map(b => (
+            <div key={b.ip} style={{
+              padding: '12px 16px', borderRadius: '10px',
+              background: 'rgba(255,77,77,0.07)',
+              border: '1px solid rgba(255,77,77,0.25)',
+              fontSize: '0.82rem',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}>
+              <div>
+                <span style={{ fontWeight: 600, color: 'var(--text)' }}>{b.ip}</span>
+                <span style={{ marginLeft: '12px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{b.reason}</span>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '2px' }}>Banned on: {new Date(b.createdAt).toLocaleString()}</div>
+              </div>
+              <button onClick={() => handleUnbanIP(b.ip)} style={{
+                background: 'rgba(0,200,100,0.1)', border: '1px solid rgba(0,200,100,0.3)',
+                color: '#00c864', cursor: 'pointer', fontSize: '0.72rem', padding: '4px 12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px',
+              }}>
+                <ShieldCheck size={12} /> Lift Ban
+              </button>
+            </div>
+          )) : (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '20px' }}>No active IP bans. System secure.</p>
+          )}
+        </div>
+        <p style={{ marginTop: '16px', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+          Note: Honeypot triggers (e.g. visiting /.env) will automatically appear here.
+        </p>
       </div>
 
       <div className="glass-card" style={{ marginTop: '24px', opacity: 0.7 }}>
