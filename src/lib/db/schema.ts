@@ -126,3 +126,9 @@ export const ipBans = pgTable('ip_bans', {
   reason: text('reason').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const bannedGithubIds = pgTable('banned_github_ids', {
+  githubId: text('github_id').primaryKey(),
+  reason: text('reason').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});

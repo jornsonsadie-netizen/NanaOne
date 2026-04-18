@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { users } from '@/lib/db/schema';
+import { users, accounts } from '@/lib/db/schema';
 import { desc, eq } from 'drizzle-orm';
+import { banGithubId, unbanGithubId } from '@/lib/security';
 
 // GET: list all users (with abuse info)
 export async function GET() {
@@ -31,21 +32,41 @@ export async function POST(req: Request) {
     }
 
     if (action === 'ban') {
+      const banReason = reason || 'Manually banned by admin';
       await db.update(users).set({
         banned: true,
-        banReason: reason || 'Manually banned by admin',
+        banReason: banReason,
+        apiKey: null, // Revoke API key
       }).where(eq(users.id, userId));
-      return NextResponse.json({ success: true, message: 'User banned' });
+
+      // Also ban associated GitHub account if exists
+      const linkedAccount = await db.select().from(accounts).where(eq(accounts.userId, userId)).limit(1);
+      if (linkedAccount[0]?.provider === 'github') {
+        await banGithubId(linkedAccount[0].providerAccountId, banReason);
+      }
+
+      return NextResponse.json({ success: true, message: 'User banned, API key revoked, and GitHub blacklisted' });
     }
 
     if (action === 'unban') {
+      const { v4: uuidv4 } = require('uuid');
+      const newApiKey = `NanaOne-${uuidv4().replace(/-/g, '').slice(0, 32)}`;
+      
       await db.update(users).set({
         banned: false,
         banReason: null,
         abuseFlags: null,
         abuseFlagCount: 0,
+        apiKey: newApiKey, // Restore access with a new key
       }).where(eq(users.id, userId));
-      return NextResponse.json({ success: true, message: 'User unbanned and flags cleared' });
+
+      // Also unban associated GitHub account
+      const linkedAccount = await db.select().from(accounts).where(eq(accounts.userId, userId)).limit(1);
+      if (linkedAccount[0]?.provider === 'github') {
+        await unbanGithubId(linkedAccount[0].providerAccountId);
+      }
+
+      return NextResponse.json({ success: true, message: 'User unbanned, flags cleared, and GitHub whitelist updated' });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

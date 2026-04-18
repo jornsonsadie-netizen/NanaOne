@@ -22,6 +22,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      // 1. Check for banned GitHub account
+      if (account?.provider === 'github' && account.providerAccountId) {
+        const { bannedGithubIds } = require('@/lib/db/schema');
+        const bannedAccount = await db.select().from(bannedGithubIds).where(eq(bannedGithubIds.githubId, account.providerAccountId)).limit(1);
+        if (bannedAccount.length > 0) {
+          console.warn(`[AUTH] Blocked login attempt from banned GitHub ID: ${account.providerAccountId}`);
+          return false; // Deny sign-in
+        }
+      }
+
+      // 2. Check for banned existing user
+      if (user?.id) {
+        const existingUser = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+        if (existingUser[0]?.banned) {
+          console.warn(`[AUTH] Blocked login attempt from banned user ID: ${user.id}`);
+          return false; // Deny sign-in
+        }
+      }
+
+      return true; // Allow sign-in
+    },
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;

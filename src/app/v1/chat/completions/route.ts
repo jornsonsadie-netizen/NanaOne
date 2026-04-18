@@ -41,7 +41,11 @@ async function handleAbuseFlag(userId: string, reason: string, currentFlags: str
   await db.update(users).set({
     abuseFlags: JSON.stringify(flags),
     abuseFlagCount: newCount,
-    ...(shouldBan ? { banned: true, banReason: `Auto-banned after ${newCount} abuse flags. Last: ${reason}` } : {}),
+    ...(shouldBan ? { 
+      banned: true, 
+      banReason: `Auto-banned after ${newCount} abuse flags. Last: ${reason}`,
+      apiKey: null // Revoke API key on auto-ban
+    } : {}),
   }).where(eq(users.id, userId));
 
   console.log(`[ABUSE] User ${userId} flagged (${newCount}/${AUTO_BAN_THRESHOLD}): ${reason}${shouldBan ? ' — AUTO-BANNED' : ''}`);
