@@ -1,11 +1,19 @@
-import NextAuth from "next-auth";
+import NextAuth, { type DefaultSession } from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
 import { users, accounts, sessions, verificationTokens } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-
 import { v4 as uuidv4 } from 'uuid';
+
+// Module augmentation for custom session properties
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"]
+  }
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {

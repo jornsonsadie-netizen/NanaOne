@@ -37,7 +37,7 @@ export const accounts = pgTable(
     id_token: text("id_token"),
     session_state: text("session_state"),
   },
-  (account) => [
+  (account: any) => [
     {
       compoundKey: [account.provider, account.providerAccountId],
     },
@@ -59,7 +59,7 @@ export const verificationTokens = pgTable(
     token: text("token").notNull(),
     expires: timestamp("expires", { mode: "date" }).notNull(),
   },
-  (vt) => [
+  (vt: any) => [
     {
       compoundKey: [vt.identifier, vt.token],
     },

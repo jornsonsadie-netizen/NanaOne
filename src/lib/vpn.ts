@@ -2,6 +2,14 @@
 const vpnCache: Record<string, { isVPN: boolean; expires: number }> = {};
 const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
+interface IPAPIResponse {
+  status: 'success' | 'fail';
+  proxy?: boolean;
+  hosting?: boolean;
+  query?: string;
+  message?: string;
+}
+
 export async function checkVPN(ip: string): Promise<boolean> {
   // 1. Check Cache
   const cached = vpnCache[ip];
@@ -18,7 +26,7 @@ export async function checkVPN(ip: string): Promise<boolean> {
     // 3. API Check (ip-api.com)
     // Fields: proxy (VPN/Proxy), hosting (Data Center/Hosting provider)
     const res = await fetch(`http://ip-api.com/json/${ip}?fields=proxy,hosting,status`);
-    const data = await res.json();
+    const data = await res.json() as IPAPIResponse;
 
     if (data.status !== 'success') {
       return false; // Fallback to allow if API fails

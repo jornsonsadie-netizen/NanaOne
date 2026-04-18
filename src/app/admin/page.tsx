@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key, Zap, Users, ShieldOff, ShieldCheck } from 'lucide-react';
 
@@ -48,7 +48,7 @@ export default function AdminPage() {
         const data = await res.json();
         setLogs(data);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Logs fetch failed');
     }
   };
@@ -57,7 +57,7 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/users');
       if (res.ok) setAllUsers(await res.json());
-    } catch (e) {
+    } catch (e: any) {
       console.error('Users fetch failed');
     }
   };
@@ -66,7 +66,7 @@ export default function AdminPage() {
     try {
       const res = await fetch('/api/admin/ip-bans');
       if (res.ok) setBannedIPs(await res.json());
-    } catch (e) {
+    } catch (e: any) {
       console.error('IP bans fetch failed');
     }
   };
@@ -122,7 +122,7 @@ export default function AdminPage() {
             <input 
               className="input-field" 
               value={endpoint} 
-              onChange={(e) => setEndpoint(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndpoint(e.target.value)}
               placeholder="https://api.openai.com/v1"
             />
           </div>
@@ -135,7 +135,7 @@ export default function AdminPage() {
               type="password"
               className="input-field" 
               value={key} 
-              onChange={(e) => setKey(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKey(e.target.value)}
               placeholder="sk-..."
             />
           </div>
@@ -149,7 +149,7 @@ export default function AdminPage() {
                 type="number"
                 className="input-field" 
                 value={contextLimit} 
-                onChange={(e) => setContextLimit(parseInt(e.target.value))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContextLimit(parseInt(e.target.value))}
                 placeholder="16000"
               />
             </div>
@@ -161,7 +161,7 @@ export default function AdminPage() {
                 type="number"
                 className="input-field" 
                 value={maxOutputTokens} 
-                onChange={(e) => setMaxOutputTokens(parseInt(e.target.value))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxOutputTokens(parseInt(e.target.value))}
                 placeholder="4000"
               />
             </div>
@@ -345,14 +345,21 @@ export default function AdminPage() {
                 <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.75rem' }}>
                   <div style={{ color: 'var(--text-muted)', marginBottom: '6px' }}>ID: {u.id} | Balance: ${u.balance?.toFixed(4)} daily + ${u.oneTimeBalance?.toFixed(4)} one-time</div>
                   {u.banReason && <div style={{ color: '#ff4d4d', marginBottom: '6px' }}>Ban reason: {u.banReason}</div>}
-                  {u.abuseFlags && (
+                  {u.abuseFlags && u.abuseFlags !== 'null' && (
                     <div>
                       <div style={{ color: 'orange', marginBottom: '4px' }}>Abuse flags:</div>
-                      {JSON.parse(u.abuseFlags).map((f: any, i: number) => (
-                        <div key={i} style={{ color: 'var(--text-muted)', paddingLeft: '8px' }}>
-                          {f.time.split('T')[1].split('.')[0]} — {f.reason}
-                        </div>
-                      ))}
+                      {(() => {
+                        try {
+                          const flags = JSON.parse(u.abuseFlags);
+                          return Array.isArray(flags) ? flags.map((f: any, i: number) => (
+                            <div key={i} style={{ color: 'var(--text-muted)', paddingLeft: '8px' }}>
+                              {f.time?.split('T')[1]?.split('.')[0] || 'Unknown'} — {f.reason}
+                            </div>
+                          )) : null;
+                        } catch {
+                          return null;
+                        }
+                      })()}
                     </div>
                   )}
                 </div>
