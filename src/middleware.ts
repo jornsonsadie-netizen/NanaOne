@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getAllBannedIPs, banIP } from '@/lib/security';
+import { checkVPN } from '@/lib/vpn';
 
 // In-memory cache for banned IPs
 let bannedIPsCache: Set<string> = new Set();
@@ -53,6 +54,15 @@ export async function middleware(req: NextRequest) {
   const ip = req.ip || req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
   const url = req.nextUrl.pathname;
   const userAgent = req.headers.get('user-agent')?.toLowerCase() || '';
+
+  // 0. VPN Check (Except for /vpn-detected and assets)
+  if (!url.startsWith('/vpn-detected') && !url.includes('.') && !url.startsWith('/api/auth')) {
+    const isVPN = await checkVPN(ip);
+    if (isVPN) {
+      console.warn(`[SECURITY] VPN detected on site access: ${ip}. Redirecting to /vpn-detected.`);
+      return NextResponse.redirect(new URL('/vpn-detected', req.url));
+    }
+  }
 
   // 1. Check In-Memory Ban Cache
   await updateCache();

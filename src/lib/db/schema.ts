@@ -15,8 +15,9 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').defaultNow(),
   banned: boolean('banned').default(false),
   banReason: text('ban_reason'), // Human-readable reason
-  abuseFlags: text('abuse_flags'), // JSON array of flag events for review
+  abuseFlags: text('abuse_flags'), // JSON string
   abuseFlagCount: integer('abuse_flag_count').default(0),
+  lockedIp: text('locked_ip'), // Bound IP for API key
 });
 
 export const accounts = pgTable(
