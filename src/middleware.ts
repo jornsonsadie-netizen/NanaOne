@@ -31,6 +31,12 @@ const BLOCKED_AGENTS = [
   'masscan',
   'zgrab',
   'censys',
+  'gptbot',
+  'chatgpt-user',
+  'claudebot',
+  'anthropic-ai',
+  'perplexitybot',
+  'cohere-ai',
 ];
 
 async function updateCache() {
