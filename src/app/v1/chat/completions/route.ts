@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { settings, users, usageLogs, curationLogs } from '@/lib/db/schema';
 import { eq, sql } from 'drizzle-orm';
+import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { checkVPN } from '@/lib/vpn';
 
