@@ -28,13 +28,14 @@ const BLOCKED_AGENTS = [
   'masscan',
   'zgrab',
   'censys',
-  'gptbot',
-  'chatgpt-user',
-  'claudebot',
-  'anthropic-ai',
-  'perplexitybot',
-  'cohere-ai',
 ];
+
+// CORS headers for proxy-level responses
+const PROXY_CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
 // In Next.js 16, the middleware function is exported as 'proxy'
 export async function proxy(req: NextRequest) {
@@ -43,37 +44,46 @@ export async function proxy(req: NextRequest) {
   const url = req.nextUrl.pathname;
   const userAgent = req.headers.get('user-agent')?.toLowerCase() || '';
 
-  // SKIP ALL CHECKS for auth routes — these must pass through cleanly
+  // SKIP ALL CHECKS for auth routes
   if (url.startsWith('/api/auth')) {
     return NextResponse.next();
   }
 
-  // 0. Skip checks for static assets
+  // SKIP ALL CHECKS for API routes — let route handlers handle their own CORS & auth
+  if (url.startsWith('/v1/') || url.startsWith('/api/')) {
+    // Handle preflight OPTIONS at proxy level for API routes
+    if (req.method === 'OPTIONS') {
+      return new NextResponse(null, { status: 200, headers: PROXY_CORS });
+    }
+    return NextResponse.next();
+  }
+
+  // Skip checks for static assets
   if (url.includes('.') || url.startsWith('/_next')) {
     return NextResponse.next();
   }
 
   // 1. Check In-Memory Ban Cache (no DB call, just in-memory set)
   if (bannedIPsCache.has(ip)) {
-    return new NextResponse('Access Denied: Your IP is blacklisted.', { status: 403 });
+    return new NextResponse('Access Denied: Your IP is blacklisted.', { status: 403, headers: PROXY_CORS });
   }
 
   // 2. Honeypot Trap — ban in memory instantly
   if (HONEYPOT_PATHS.some(path => url.toLowerCase().includes(path.toLowerCase()))) {
     console.warn(`[SECURITY] Honeypot triggered by IP: ${ip} on path: ${url}`);
     bannedIPsCache.add(ip);
-    return new NextResponse('Access Denied: Malicious activity detected.', { status: 403 });
+    return new NextResponse('Access Denied: Malicious activity detected.', { status: 403, headers: PROXY_CORS });
   }
 
-  // 3. Header & User-Agent Filtering
-  if (!userAgent || BLOCKED_AGENTS.some(agent => userAgent.includes(agent))) {
-    return new NextResponse('Access Denied: Scanner/Bot detected.', { status: 403 });
+  // 3. Header & User-Agent Filtering (only for non-API, non-auth page requests)
+  if (userAgent && BLOCKED_AGENTS.some(agent => userAgent.includes(agent))) {
+    return new NextResponse('Access Denied: Scanner/Bot detected.', { status: 403, headers: PROXY_CORS });
   }
 
   // 4. Payload Size Capping (1MB)
   const contentLength = req.headers.get('content-length');
   if (contentLength && parseInt(contentLength) > 1024 * 1024) {
-    return new NextResponse('Request Entity Too Large', { status: 413 });
+    return new NextResponse('Request Entity Too Large', { status: 413, headers: PROXY_CORS });
   }
 
   return NextResponse.next();
