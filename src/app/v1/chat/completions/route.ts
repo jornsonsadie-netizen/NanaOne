@@ -401,6 +401,53 @@ export async function POST(req: Request) {
     console.log('Sending final payload to upstream provider...');
     steps.push({ time: new Date().toISOString(), step: `Handoff to upstream provider` });
     const originalInputTokens = estimateTokens(body.messages || []); // Capture for log
+
+    // STREAMING: Use fetch + ReadableStream passthrough for SSE
+    if (body.stream === true) {
+      const upstreamRes = await fetch(`${s[0].upstreamEndpoint}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${s[0].upstreamKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!upstreamRes.ok || !upstreamRes.body) {
+        const errText = await upstreamRes.text().catch(() => 'Unknown upstream error');
+        console.error('[STREAM ERROR] Upstream returned:', upstreamRes.status, errText);
+        return new Response(errText, {
+          status: upstreamRes.status || 502,
+          headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Persist curation log for streaming (we won't have exact token counts)
+      await db.insert(curationLogs).values({
+        id: uuidv4(),
+        userId: user[0].id,
+        requestId: requestId,
+        originalTokens: initialTokens,
+        curatedTokens: curatedTokens,
+        curationSteps: JSON.stringify(steps),
+        status: 'success_stream',
+        modelUsed: body.model,
+        createdAt: new Date(),
+      });
+
+      // Pipe upstream SSE stream directly to client
+      return new Response(upstreamRes.body, {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
+    // NON-STREAMING: Use axios as before
     const upstreamResponse = await axios.post(`${s[0].upstreamEndpoint}/chat/completions`, body, {
       headers: {
         'Authorization': `Bearer ${s[0].upstreamKey}`,
