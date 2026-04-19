@@ -1,11 +1,8 @@
 'use client';
 
 import { ShieldAlert, RefreshCw, ArrowLeft } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 export default function VPNDetectedPage() {
-  const router = useRouter();
-
   return (
     <div style={{
       minHeight: '100vh',
@@ -59,7 +56,7 @@ export default function VPNDetectedPage() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button 
-            onClick={() => window.location.reload()}
+            onClick={() => window.location.href = '/'}
             className="btn-primary"
             style={{ 
               display: 'flex', 
@@ -70,11 +67,11 @@ export default function VPNDetectedPage() {
               borderColor: '#ff6666'
             }}
           >
-            <RefreshCw size={18} /> I have disabled my VPN
+            <RefreshCw size={18} /> I have disabled my VPN — Take me back
           </button>
           
           <button 
-            onClick={() => router.push('/')}
+            onClick={() => window.location.href = '/'}
             style={{ 
               background: 'none', 
               border: 'none', 

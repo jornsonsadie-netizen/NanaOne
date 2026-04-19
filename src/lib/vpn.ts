@@ -1,6 +1,6 @@
 // Simple in-memory cache for VPN check results
 const vpnCache: Record<string, { isVPN: boolean; expires: number }> = {};
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes (short so users recover fast after disabling VPN)
 
 interface IPAPIResponse {
   status: 'success' | 'fail';
@@ -17,22 +17,23 @@ export async function checkVPN(ip: string): Promise<boolean> {
     return cached.isVPN;
   }
 
-  // 2. Handle Localhost/Internal
-  if (ip === '127.0.0.1' || ip === '::1' || ip === 'unknown') {
+  // 2. Handle Localhost/Internal/Unknown
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'unknown' || ip === '') {
     return false;
   }
 
   try {
     // 3. API Check (ip-api.com)
-    // Fields: proxy (VPN/Proxy), hosting (Data Center/Hosting provider)
-    const res = await fetch(`http://ip-api.com/json/${ip}?fields=proxy,hosting,status`);
+    // ONLY check proxy flag. "hosting" causes false positives on Starlink, T-Mobile, etc.
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=proxy,status`);
     const data = await res.json() as IPAPIResponse;
 
     if (data.status !== 'success') {
-      return false; // Fallback to allow if API fails
+      return false; // Fail open if API fails
     }
 
-    const isVPN = data.proxy === true || data.hosting === true;
+    // Only flag actual proxies/VPNs, NOT hosting providers
+    const isVPN = data.proxy === true;
 
     // 4. Update Cache
     vpnCache[ip] = {
@@ -43,6 +44,11 @@ export async function checkVPN(ip: string): Promise<boolean> {
     return isVPN;
   } catch (error) {
     console.error(`[VPN CHECK] Failed for IP ${ip}:`, error);
-    return false; // Fail open to avoid blocking valid traffic if API is down
+    return false; // Fail open
   }
+}
+
+// Allow manually clearing cache for an IP (used when user says they disabled VPN)
+export function clearVPNCache(ip: string) {
+  delete vpnCache[ip];
 }

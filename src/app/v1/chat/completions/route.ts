@@ -265,7 +265,7 @@ export async function POST(req: Request) {
   const apiKey = authHeader.split(' ')[1];
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || 'unknown';
   
-  // 1. VPN Detection and IP Locking
+  // 1. VPN Detection
   const isVPN = await checkVPN(ip);
   if (isVPN) {
     return NextResponse.json({ error: '403: Why are you using a VPN? Turn it off.' }, { status: 403, headers: CORS_HEADERS });
@@ -279,15 +279,15 @@ export async function POST(req: Request) {
 
   const currentUser = user[0];
 
-  // 2. IP Locking Logic
+  // 2. IP Locking Logic — re-lock to new IP if VPN check passes (handles ISP IP rotation)
   if (!currentUser.lockedIp) {
     // First time use: Lock to current IP
     await db.update(users).set({ lockedIp: ip }).where(eq(users.id, currentUser.id));
     console.log(`[SECURITY] Locked User ${currentUser.id} to IP: ${ip}`);
   } else if (currentUser.lockedIp !== ip) {
-    // IP Changed: Block
-    console.warn(`[SECURITY] User ${currentUser.id} IP mismatch: ${ip} (Expected: ${currentUser.lockedIp})`);
-    return NextResponse.json({ error: '403: Why are you using a VPN? Turn it off.' }, { status: 403, headers: CORS_HEADERS });
+    // IP changed but VPN check passed (already checked above), so re-lock to new IP
+    await db.update(users).set({ lockedIp: ip }).where(eq(users.id, currentUser.id));
+    console.log(`[SECURITY] User ${currentUser.id} IP changed from ${currentUser.lockedIp} to ${ip}. Re-locked.`);
   }
 
   // Check if user is banned
