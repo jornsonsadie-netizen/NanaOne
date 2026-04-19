@@ -54,6 +54,10 @@ async function handleAbuseFlag(userId: string, reason: string, currentFlags: str
 }
 // --- End Abuse Detection ---
 
+// Vercel config: extend timeout for AI responses and force Node.js runtime
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -264,12 +268,6 @@ export async function POST(req: Request) {
 
   const apiKey = authHeader.split(' ')[1];
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('x-real-ip') || 'unknown';
-  
-  // 1. VPN Detection
-  const isVPN = await checkVPN(ip);
-  if (isVPN) {
-    return NextResponse.json({ error: '403: Why are you using a VPN? Turn it off.' }, { status: 403, headers: CORS_HEADERS });
-  }
 
   const user = await db.select().from(users).where(eq(users.apiKey, apiKey)).limit(1);
 
