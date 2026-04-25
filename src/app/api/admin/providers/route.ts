@@ -4,6 +4,8 @@ import { providers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { refreshModels } from '@/lib/db/utils';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const p = await db.select().from(providers);
   return NextResponse.json(p);

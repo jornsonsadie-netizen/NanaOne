@@ -4,6 +4,8 @@ import { settings, models } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 import { refreshModels } from '@/lib/db/utils';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const s = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
   return NextResponse.json(s[0] || {});
