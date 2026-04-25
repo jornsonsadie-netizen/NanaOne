@@ -6,8 +6,8 @@ import { Settings, RefreshCw, Save, ArrowLeft, Globe, Key, Zap, Users, ShieldOff
 
 export default function AdminPage() {
   const router = useRouter();
-  const [endpoint, setEndpoint] = useState('');
-  const [key, setKey] = useState('');
+  const [providersList, setProvidersList] = useState<any[]>([]);
+  const [newProvider, setNewProvider] = useState({ name: '', baseUrl: '', apiKey: '' });
   const [contextLimit, setContextLimit] = useState(16000);
   const [maxOutputTokens, setMaxOutputTokens] = useState(4000);
   const [saving, setSaving] = useState(false);
@@ -25,21 +25,35 @@ export default function AdminPage() {
       return;
     }
 
-    fetch('/api/admin/settings')
-      .then(res => res.json())
-      .then(data => {
-        setEndpoint(data.upstreamEndpoint || '');
-        setKey(data.upstreamKey || '');
-        setContextLimit(data.contextLimit || 16000);
-        setMaxOutputTokens(data.maxOutputTokens || 4000);
-      });
-
+    fetchProviders();
     fetchLogs();
     fetchUsers();
     fetchBannedIPs();
     const interval = setInterval(() => { fetchLogs(); fetchUsers(); fetchBannedIPs(); }, 5000);
     return () => clearInterval(interval);
   }, [router]);
+
+  const fetchProviders = async () => {
+    try {
+      const res = await fetch('/api/admin/providers');
+      if (res.ok) setProvidersList(await res.json());
+    } catch (e: any) {
+      console.error('Providers fetch failed');
+    }
+  };
+
+  const fetchSettings = async () => {
+    try {
+      const res = await fetch('/api/admin/settings');
+      if (res.ok) {
+        const data = await res.json();
+        setContextLimit(data.contextLimit || 16000);
+        setMaxOutputTokens(data.maxOutputTokens || 4000);
+      }
+    } catch (e: any) {
+      console.error('Settings fetch failed');
+    }
+  };
 
   const fetchLogs = async () => {
     try {
@@ -89,14 +103,50 @@ export default function AdminPage() {
     await fetchUsers();
   };
 
-  const handleSave = async () => {
+  const handleSaveSettings = async () => {
     setSaving(true);
     await fetch('/api/admin/settings', {
       method: 'POST',
-      body: JSON.stringify({ endpoint, key, contextLimit, maxOutputTokens }),
+      body: JSON.stringify({ contextLimit, maxOutputTokens }),
     });
     setSaving(false);
-    alert('Settings saved and models refreshed!');
+    alert('Global settings saved!');
+  };
+
+  const handleAddProvider = async () => {
+    if (!newProvider.name || !newProvider.baseUrl || !newProvider.apiKey) return alert('Fill all fields');
+    setSaving(true);
+    await fetch('/api/admin/providers', {
+      method: 'POST',
+      body: JSON.stringify(newProvider),
+    });
+    setNewProvider({ name: '', baseUrl: '', apiKey: '' });
+    await fetchProviders();
+    setSaving(false);
+  };
+
+  const handleDeleteProvider = async (id: string) => {
+    if (!confirm('Are you sure?')) return;
+    await fetch('/api/admin/providers', {
+      method: 'POST',
+      body: JSON.stringify({ id, action: 'delete' }),
+    });
+    await fetchProviders();
+  };
+
+  const handleToggleProvider = async (id: string, enabled: boolean) => {
+    await fetch('/api/admin/providers', {
+      method: 'POST',
+      body: JSON.stringify({ id, enabled }),
+    });
+    await fetchProviders();
+  };
+
+  const handleRefreshModels = async () => {
+    setSaving(true);
+    await fetch('/api/admin/settings', { method: 'POST', body: JSON.stringify({ refreshOnly: true }) });
+    setSaving(false);
+    alert('Models refreshed from all enabled providers!');
   };
 
   return (
@@ -115,67 +165,76 @@ export default function AdminPage() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Globe size={14} /> Upstream API Endpoint
-            </label>
-            <input 
-              className="input-field" 
-              value={endpoint} 
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEndpoint(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h3 style={{ fontSize: '1rem', color: 'var(--text)', marginBottom: '4px' }}>Enabled Providers</h3>
+            {providersList.length > 0 ? providersList.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{p.name}</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.baseUrl}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button 
+                    onClick={() => handleToggleProvider(p.id, !p.enabled)}
+                    style={{ background: p.enabled ? 'rgba(0,255,0,0.1)' : 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)', color: p.enabled ? '#00c864' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 10px', borderRadius: '6px' }}
+                  >
+                    {p.enabled ? 'Active' : 'Disabled'}
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteProvider(p.id)}
+                    style={{ background: 'rgba(255,0,0,0.1)', border: '1px solid rgba(255,0,0,0.2)', color: '#ff4d4d', cursor: 'pointer', fontSize: '0.75rem', padding: '4px 10px', borderRadius: '6px' }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )) : <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No providers added yet.</p>}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Key size={14} /> Upstream API Key
-            </label>
-            <input 
-              type="password"
-              className="input-field" 
-              value={key} 
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKey(e.target.value)}
-              placeholder="sk-..."
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <RefreshCw size={14} /> Context Limit (Tokens)
-              </label>
-              <input 
-                type="number"
-                className="input-field" 
-                value={contextLimit} 
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setContextLimit(parseInt(e.target.value))}
-                placeholder="16000"
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <RefreshCw size={14} /> Max Output Tokens
-              </label>
-              <input 
-                type="number"
-                className="input-field" 
-                value={maxOutputTokens} 
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxOutputTokens(parseInt(e.target.value))}
-                placeholder="4000"
-              />
+          <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+            <h3 style={{ fontSize: '1rem', color: 'var(--text)', marginBottom: '16px' }}>Add New Provider</h3>
+            <div style={{ display: 'grid', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Provider Name</label>
+                <input className="input-field" value={newProvider.name} onChange={e => setNewProvider({ ...newProvider, name: e.target.value })} placeholder="e.g. OpenAI" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>API Base URL</label>
+                <input className="input-field" value={newProvider.baseUrl} onChange={e => setNewProvider({ ...newProvider, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>API Key</label>
+                <input type="password" className="input-field" value={newProvider.apiKey} onChange={e => setNewProvider({ ...newProvider, apiKey: e.target.value })} placeholder="sk-..." />
+              </div>
+              <button className="btn-primary" onClick={handleAddProvider} disabled={saving}>
+                <Zap size={16} /> Add Provider
+              </button>
             </div>
           </div>
 
-          <button 
-            className="btn-primary" 
-            onClick={handleSave} 
-            disabled={saving}
-            style={{ marginTop: '12px' }}
-          >
-            {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-            {saving ? 'Saving...' : 'Save & Refresh Models'}
-          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', borderTop: '1px solid var(--glass-border)', paddingTop: '24px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} /> Context Limit
+              </label>
+              <input type="number" className="input-field" value={contextLimit} onChange={e => setContextLimit(parseInt(e.target.value))} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RefreshCw size={14} /> Max Output
+              </label>
+              <input type="number" className="input-field" value={maxOutputTokens} onChange={e => setMaxOutputTokens(parseInt(e.target.value))} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button className="btn-primary" onClick={handleSaveSettings} disabled={saving} style={{ flex: 1 }}>
+              <Save size={18} /> Save Global Settings
+            </button>
+            <button className="btn-primary" onClick={handleRefreshModels} disabled={saving} style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid var(--glass-border)', color: 'var(--text)' }}>
+              <RefreshCw className={saving ? 'animate-spin' : ''} size={18} /> Refresh Models
+            </button>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { db } from './index';
-import { settings, models } from './schema';
+import { settings, models, providers } from './schema';
 import axios from 'axios';
 import { eq } from 'drizzle-orm';
 
@@ -17,28 +17,42 @@ export async function initDatabase() {
 }
 
 export async function refreshModels() {
-  const s = await db.select().from(settings).where(eq(settings.id, 1)).limit(1);
-  if (!s[0]) return;
+  const allProviders = await db.select().from(providers).where(eq(providers.enabled, true));
+  
+  if (allProviders.length === 0) {
+    console.log('No enabled providers found for model refresh');
+    return;
+  }
 
-  try {
-    const response = await axios.get(`${s[0].upstreamEndpoint}/models`, {
-      headers: {
-        Authorization: `Bearer ${s[0].upstreamKey}`,
-      },
-    });
-
-    const upstreamModels = response.data.data;
-    for (const m of upstreamModels) {
-      await db.insert(models).values({
-        id: m.id,
-        name: m.id,
-        provider: 'upstream',
-      }).onConflictDoUpdate({
-        target: models.id,
-        set: { name: m.id },
+  for (const provider of allProviders) {
+    try {
+      console.log(`Refreshing models for provider: ${provider.name} (${provider.baseUrl})`);
+      const response = await axios.get(`${provider.baseUrl}/models`, {
+        headers: {
+          Authorization: `Bearer ${provider.apiKey}`,
+        },
+        timeout: 10000,
       });
+
+      const upstreamModels = response.data.data;
+      if (!Array.isArray(upstreamModels)) {
+        console.warn(`Provider ${provider.name} returned invalid models data`);
+        continue;
+      }
+
+      for (const m of upstreamModels) {
+        await db.insert(models).values({
+          id: m.id,
+          name: m.id,
+          providerId: provider.id,
+        }).onConflictDoUpdate({
+          target: [models.id, models.providerId],
+          set: { name: m.id },
+        });
+      }
+      console.log(`Successfully refreshed ${upstreamModels.length} models for ${provider.name}`);
+    } catch (error: any) {
+      console.error(`Failed to refresh models for provider ${provider.name}:`, error.message);
     }
-  } catch (error) {
-    console.error('Failed to refresh models:', error);
   }
 }

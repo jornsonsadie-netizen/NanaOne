@@ -11,16 +11,21 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { endpoint, key, contextLimit, maxOutputTokens } = body;
+  const { endpoint, key, contextLimit, maxOutputTokens, refreshOnly } = body;
+
+  if (refreshOnly) {
+    await refreshModels();
+    return NextResponse.json({ success: true });
+  }
 
   await db.update(settings).set({
-    upstreamEndpoint: endpoint,
-    upstreamKey: key,
+    ...(endpoint && { upstreamEndpoint: endpoint }),
+    ...(key && { upstreamKey: key }),
     contextLimit: Number(contextLimit) || 16000,
     maxOutputTokens: Number(maxOutputTokens) || 4000,
   }).where(eq(settings.id, 1));
 
-  // Refresh models after updating provider
+  // Refresh models after updating global settings if requested
   await refreshModels();
 
   return NextResponse.json({ success: true });

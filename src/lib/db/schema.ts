@@ -1,4 +1,4 @@
-import { pgTable, text, real, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, text, real, timestamp, integer, boolean, primaryKey } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -83,13 +83,24 @@ export const settings = pgTable('settings', {
   maxOutputTokens: integer('max_output_tokens').default(4000),
 });
 
+export const providers = pgTable('providers', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: text('name').notNull(),
+  baseUrl: text('base_url').notNull(),
+  apiKey: text('api_key').notNull(),
+  enabled: boolean('enabled').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
 export const models = pgTable('models', {
-  id: text('id').primaryKey(),
+  id: text('id').notNull(),
   name: text('name'),
   description: text('description'),
-  provider: text('provider'),
+  providerId: text('provider_id').references(() => providers.id, { onDelete: 'cascade' }),
   enabled: boolean('enabled').default(true),
-});
+}, (table: any) => [
+  primaryKey({ columns: [table.id, table.providerId] })
+]);
 
 export const redeemCodes = pgTable('redeem_codes', {
   code: text('code').primaryKey(),

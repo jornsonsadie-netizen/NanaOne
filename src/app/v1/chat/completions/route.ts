@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { settings, users, usageLogs, curationLogs } from '@/lib/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { settings, users, usageLogs, curationLogs, models, providers } from '@/lib/db/schema';
+import { eq, sql, and } from 'drizzle-orm';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { checkVPN } from '@/lib/vpn';
@@ -380,42 +380,69 @@ export async function POST(req: Request) {
     }, { status: 413, headers: CORS_HEADERS });
   }
 
-  // 4. GLOBAL OUTPUT LIMIT VALIDATION
-  if (body.max_tokens && body.max_tokens > maxOutputLimit) {
-    console.error(`[LIMIT EXCEEDED] Output Tokens: ${body.max_tokens} > ${maxOutputLimit}`);
-    return NextResponse.json({ 
-      error: {
-        message: `Request exceeds max output tokens (${body.max_tokens}). Global limit is ${maxOutputLimit}.`,
-        type: 'max_tokens_exceeded',
-        code: 413
-      }
-    }, { status: 413, headers: CORS_HEADERS });
-  }
+    // --- DYNAMIC PROVIDER ROUTING ---
+    const requestedModel = body.model;
+    const modelLookup = await db.select()
+      .from(models)
+      .innerJoin(providers, eq(models.providerId, providers.id))
+      .where(and(eq(models.id, requestedModel), eq(providers.enabled, true)))
+      .limit(1);
 
-  try {
-    console.log('\n--- UPSTREAM HANDOFF INSPECTION ---');
-    console.log(`Final message count: ${body.messages?.length || 0}`);
-    console.log(`Final estimated tokens: ${estimateTokens(body.messages || [])}`);
-    if (body.messages && body.messages.length > 0) {
-      const first = body.messages[0];
-      const last = body.messages[body.messages.length - 1];
-      console.log(`First message role: ${first.role} | Snippet: ${typeof first.content === 'string' ? first.content.substring(0, 100) : 'Multimodal content'}`);
-      console.log(`Last message role: ${last.role} | Snippet: ${typeof last.content === 'string' ? last.content.substring(0, 100) : 'Multimodal content'}`);
+    if (modelLookup.length === 0) {
+      console.error(`[ROUTING ERROR] Model '${requestedModel}' not found or provider disabled.`);
+      return NextResponse.json({ 
+        error: {
+          message: `Model '${requestedModel}' is not available or its provider is disabled. Refresh models in admin if this is a mistake.`,
+          type: 'invalid_request_error',
+          code: 404
+        }
+      }, { status: 404, headers: CORS_HEADERS });
     }
-    console.log('Sending final payload to upstream provider...');
-    steps.push({ time: new Date().toISOString(), step: `Handoff to upstream provider` });
-    const originalInputTokens = estimateTokens(body.messages || []); // Capture for log
 
-    // STREAMING: Use fetch + ReadableStream passthrough for SSE
-    if (body.stream === true) {
-      const upstreamRes = await fetch(`${s[0].upstreamEndpoint}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${s[0].upstreamKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
+    const activeProvider = modelLookup[0].providers;
+    console.log(`[ROUTING] Route to ${activeProvider.name} | Model: ${requestedModel} | Endpoint: ${activeProvider.baseUrl}`);
+    
+    // Use provider-specific credentials
+    const upstreamEndpoint = activeProvider.baseUrl;
+    const upstreamKey = activeProvider.apiKey;
+    // --- END DYNAMIC ROUTING ---
+
+    // 4. GLOBAL OUTPUT LIMIT VALIDATION
+    if (body.max_tokens && body.max_tokens > maxOutputLimit) {
+      console.error(`[LIMIT EXCEEDED] Output Tokens: ${body.max_tokens} > ${maxOutputLimit}`);
+      return NextResponse.json({ 
+        error: {
+          message: `Request exceeds max output tokens (${body.max_tokens}). Global limit is ${maxOutputLimit}.`,
+          type: 'max_tokens_exceeded',
+          code: 413
+        }
+      }, { status: 413, headers: CORS_HEADERS });
+    }
+
+    try {
+      console.log('\n--- UPSTREAM HANDOFF INSPECTION ---');
+      console.log(`Final message count: ${body.messages?.length || 0}`);
+      console.log(`Final estimated tokens: ${estimateTokens(body.messages || [])}`);
+      if (body.messages && body.messages.length > 0) {
+        const first = body.messages[0];
+        const last = body.messages[body.messages.length - 1];
+        console.log(`First message role: ${first.role} | Snippet: ${typeof first.content === 'string' ? first.content.substring(0, 100) : 'Multimodal content'}`);
+        console.log(`Last message role: ${last.role} | Snippet: ${typeof last.content === 'string' ? last.content.substring(0, 100) : 'Multimodal content'}`);
+      }
+      console.log(`Sending final payload to ${activeProvider.name}...`);
+      steps.push({ time: new Date().toISOString(), step: `Handoff to provider: ${activeProvider.name}` });
+      const originalInputTokens = estimateTokens(body.messages || []); // Capture for log
+
+      // STREAMING: Use fetch + ReadableStream passthrough for SSE
+      if (body.stream === true) {
+        const upstreamRes = await fetch(`${upstreamEndpoint}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${upstreamKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
 
       if (!upstreamRes.ok || !upstreamRes.body) {
         const errText = await upstreamRes.text().catch(() => 'Unknown upstream error');
@@ -452,9 +479,9 @@ export async function POST(req: Request) {
     }
 
     // NON-STREAMING: Use axios as before
-    const upstreamResponse = await axios.post(`${s[0].upstreamEndpoint}/chat/completions`, body, {
+    const upstreamResponse = await axios.post(`${upstreamEndpoint}/chat/completions`, body, {
       headers: {
-        'Authorization': `Bearer ${s[0].upstreamKey}`,
+        'Authorization': `Bearer ${upstreamKey}`,
         'Content-Type': 'application/json',
       },
     });
